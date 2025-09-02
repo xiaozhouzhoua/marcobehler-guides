@@ -1,0 +1,299 @@
+= 13个必学SSH命令✨
+Marco Behler
+2022-10-28
+:page-layout: layout-guides
+:page-image: "/images/guides/undraw_security_re_a2rk.png"
+:page-description: 我日常使用的SSH连接、密钥生成和SSH代理的热门命令清单💻
+:page-published: true
+:page-tags: ["ssh", "ssh agent", "ssh keygen", "ssh keys"]
+:page-commento_id: ssh-cheat-sheet
+
+== SSH密钥生成🔑
+
+现在大部分平台都推荐使用ed25519算法生成密钥哦～
+
+[source,console]
+----
+ssh-keygen -t ed25519 -C "your@email.com"
+----
+
+如果为了兼容性想用RSA，可以这样：
+
+[source,console]
+----
+ssh-keygen -t rsa -b 4096 -C "your@email.com"
+----
+
+`_-C_` 参数会在你的公钥上添加注释，这样在繁忙的 <<authorized_keys>> 文件中就能轻松分辨哪个公钥属于哪个邮箱地址啦💡
+
+[source,text]
+----
+ssh-ed25519 KLAJSDLKSAJKLSJD90182980p1+++ your@email.com
+----
+
+*重要提醒*：生成SSH密钥时，一定要用密码短语保护你的私钥！🔒
+
+== 使用密钥进行SSH连接
+
+想用特定的私钥连接服务器？试试这个：
+
+[source,console]
+----
+ssh -i mykeyfile user@remotehost.com
+----
+
+不过与其手动用 `_-i_` 指定密钥文件，不如使用 <<ssh-agent>> 更方便～
+
+[[authorized_keys]]
+== 授权密钥文件📋
+
+任何你想使用SSH密钥连接的远程主机或服务（比如GitHub），都需要你的SSH密钥对中的 `_公钥_`。
+
+对于服务器，只需要把你的公钥添加到 `_~/.ssh/authorized_keys_` 文件中：
+
+用以下命令之一来操作：
+
+* `_cat ~/.ssh/id_rsa.pub | ssh USER@HOST "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"_` - https://askubuntu.com/a/262074
+* `_ssh-copy-id user@host_` - https://askubuntu.com/a/46427
+
+对于GitHub、AWS等服务，你可以通过UI界面上传公钥，或者使用命令行工具（如果有的话）。
+
+== 文件传输神器SCP📁
+
+上传文件到远程服务器：
+
+[source,console]
+----
+scp myfile.txt user@dest:/path
+----
+
+递归上传本地文件夹：
+
+[source,console]
+----
+scp -rp sourcedirectory user@dest:/path
+----
+
+从远程服务器下载文件：
+
+[source,console]
+----
+scp user@dest:/path/myfile.txt localpath
+----
+
+递归下载远程文件夹到本地：
+
+[source,console]
+----
+scp -rp user@dest:/remotedir localpath
+----
+
+*小贴士*：递归传输时，考虑使用rsync，它也走SSH协议，比SCP有 https://serverfault.com/a/264606[更多优势] 哦！✨
+
+[line-through]#*小贴士2*：https://lwn.net/Articles/835962/[SCP已被弃用]，你应该考虑切换到（不太用户友好的）SFTP。# https://news.ycombinator.com/item?id=32026913[自OpenSSH 9起，scp命令使用SFTP协议]。
+
+[[ssh-agent]]
+== SSH代理管家🤖
+
+大部分Linux发行版和macOS都自带OpenSSH代理，直接用：
+
+[source,console]
+----
+ssh-add privatekeyfile
+----
+
+Windows用户需要先启用OpenSSH代理服务，执行以下 https://docs.microsoft.com/en-us/windows-server/administration/openssh/openssh_keymanagement[命令]：
+
+[source,console]
+----
+# 默认ssh-agent服务是禁用的，先允许手动启动
+# 确保以管理员身份运行
+Get-Service ssh-agent | Set-Service -StartupType Automatic
+
+# 启动服务
+Start-Service ssh-agent
+----
+
+*小提醒*：在Windows/Linux上，一旦添加密钥到ssh-agent（即使有密码），重启电脑登录后身份验证会自动可用。
+
+macOS需要按照这些 https://apple.stackexchange.com/a/250572[StackExchange指示] 才能实现相同效果。
+
+== SSH配置文件⚙️
+
+创建 `_~/.ssh/config_` 文件来管理SSH主机连接：
+
+[source,text]
+----
+Host dev-meta*
+    User ec2-user
+    IdentityFile ~/.ssh/johnsnow.pem
+
+Host dev-meta-facebook
+    Hostname 192.168.178.1
+
+Host dev-meta-whatsapp
+    Hostname 192.168.178.2
+
+Host api.google.com
+    User googleUser
+    IdentityFile ~/.ssh/targaryen.key
+----
+
+*注意*：
+
+`_Host_` 指令可以：
+
+* 是一个模式（匹配多个后续 `_Hosts_`）
+* 引用一个虚构的主机名（`_dev-facebook_`）
+* 是一个真实的主机名
+
+如果是虚构主机名，需要指定额外的 `_Hostname_` 指令，否则可以省略。更令人困惑的是，`_Host_` 行实际上可以包含多个模式。
+
+有了上面的配置，你就可以简单执行：
+
+[source,console]
+----
+ssh dev-meta-facebook
+----
+
+这等同于执行 `_ssh -i ~/.ssh/johnsnow.pem ec2-user@192.168.178.1_`，是不是超方便！🎉
+
+查看所有可用选项的完整概述，请看 https://linuxize.com/post/using-the-ssh-config-file/[这篇文章]。
+
+== Git & Windows OpenSSH
+
+让Git使用Windows的OpenSSH（而不是自带的），执行以下命令：
+
+[source,console]
+----
+git config --global core.sshcommand "C:/Windows/System32/OpenSSH/ssh.exe"
+----
+
+== 退出卡死的SSH会话
+
+要杀死无响应的SSH会话，依次按：
+
+[source,console]
+----
+Enter, ~, .
+----
+
+== 多个GitHub密钥对🔑
+
+尝试克隆不同的私有GitHub仓库（它们有不同的SSH密钥对关联）默认是不行的。
+
+将此添加到你的 `_.ssh/config_`（这个例子假设你有两个GitHub密钥对，一个用于工作账户，一个用于个人账户）：
+
+[source,console]
+----
+Host github-work.com
+    Hostname github.com
+    IdentityFile ~/.ssh/id_work
+
+Host github-personal.com
+    Hostname github.com
+    IdentityFile ~/.ssh/id_personal
+----
+
+然后不要从 `_github.com_` 克隆：
+
+[source,console]
+----
+git clone git@github.com:marcobehlerjetbrains/buildpipelines.git
+----
+
+而是从 `_github-work.com_` 或 `_github-personal.com_` 克隆：
+
+[source,console]
+----
+git clone git@github-work.com:marcobehlerjetbrains/buildpipelines.git
+----
+
+== SSH代理转发
+
+想在远程服务器上使用你的本地SSH密钥，但不想复制密钥到那台服务器？比如在远程服务器上通过SSH `_git clone_` 私有仓库？
+
+代理转发来救场！编辑你的本地 `_.ssh/config_` 文件：
+
+[source,console]
+----
+Host yourremoteserver.com
+    ForwardAgent yes
+----
+
+然后简单地 `_ssh_` 到你的服务器并执行 `_ssh-add -L`。服务器的SSH代理应该会有所有本地SSH身份可用，你就可以开始克隆了！
+
+== SSH代理转发：Windows到WSL
+
+如果你想在WSL中使用Windows OpenSSH代理及其所有身份，这样做：
+
+1. 安装 `_socat_`，比如在你的WSL发行版上：Ubuntu/Debian用 `_apt install socat_`。
+2. 下载 https://github.com/jstarks/npiperelay/releases/tag/v0.1.0[npiperelay] 构建版本并放到你的（Windows）PATH中。
+3. 将以下内容放入你的WSL `_~/.bash_profile_` 或 `_~/.bashrc_`：
+
+[source,bash]
+----
+# 配置ssh转发
+export SSH_AUTH_SOCK=$HOME/.ssh/agent.sock
+# 需要 `ps -ww` 获取完整命令进行匹配
+# 使用方括号生成正则表达式匹配我们想要的进程，但不匹配运行它的grep命令！
+ALREADY_RUNNING=$(ps -auxww | grep -q "[n]piperelay.exe -ei -s //./pipe/openssh-ssh-agent"; echo $?)
+if [[ $ALREADY_RUNNING != "0" ]]; then
+    if [[ -S $SSH_AUTH_SOCK ]]; then
+        # 不期望socket存在，因为转发命令没在运行 (http://www.tldp.org/LDP/abs/html/fto.html)
+        echo "移除之前的socket..."
+        rm $SSH_AUTH_SOCK
+    fi
+    echo "启动SSH-Agent中继..."
+    # setsid强制新会话保持运行
+    # 设置socat监听$SSH_AUTH_SOCK并转发到npiperelay，然后转发到windows上的openssh-ssh-agent
+    (setsid socat UNIX-LISTEN:$SSH_AUTH_SOCK,fork EXEC:"npiperelay.exe -ei -s //./pipe/openssh-ssh-agent",nofork &) >/dev/null 2>&1
+fi
+----
+
+好用！
+
+特别感谢Stuart Leeks，我厚颜无耻地偷了他的代码 - 他在 https://stuartleeks.com/posts/wsl-ssh-key-forward-to-windows/ 做了所有工作。
+
+查看他的 https://wsl.tips/book[WSL书籍] 了解更多这样的技巧！
+
+== SSH隧道🚇
+
+想连接到一个对外界隐藏但可以从你有SSH访问权限的机器访问的服务器？比如Amazon RDS数据库，只能从AWS网络内部访问？
+
+使用SSH转发：
+
+[source,console]
+----
+ssh username@jumphost -N -f -L localport:targethost:targetport
+----
+
+以下命令在我的 `_本地机器（@端口3307）_` 和 `_RDS数据库（@端口3306）_` 之间建立SSH隧道，通过 `_EC2跳板机（18.11.11.11）_`：
+
+[source,console]
+----
+ssh ec2-user@18.11.11.11 -N -f -L 3307:marcotestme.12345.eu-central-1.rds.amazonaws.com:3306
+----
+
+现在你可以使用mysql客户端连接到 `_localhost:3307_`，它会透明地隧道到RDS：
+
+[source,console]
+----
+mysql -h localhost -P 3307
+----
+
+*注意*：很多工具/IDE如 https://www.jetbrains.com/idea/[IntelliJ IDEA]，支持在UI中勾选复选框就能打开SSH隧道。
+
+== 密码管理器与SSH代理
+
+像 https://developer.1password.com/docs/ssh/agent/[1Password] 或 https://lechnology.com/software/keeagent/[Keepass] 这样的密码管理器不仅可以存储你的SSH密钥，还自带 `_ssh-agent_`，替换系统的ssh-agent。
+
+这意味着，当你在任何安装了密码管理器的机器上解锁它时，你的所有SSH身份都会立即可用。
+
+超实用！💯
+
+== 视频教程📺
+
+如果你更喜欢视频形式学习某些主题，可以在YouTube上观看实战指南。
+
+mb_youtube::UnM4QAumuCQ[]
